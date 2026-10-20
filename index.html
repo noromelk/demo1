@@ -56,6 +56,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
     <div id="done" class="ok hide">✅ Դուք հաջողությամբ գրանցվեցիք։ Սպասում ենք ձեզ։</div>
     <a href="nerqin.html" style="display:block;text-align:center;margin-top:16px;font-size:13px;color:var(--ac)">Աշխատակիցների մուտք</a>
   </div>
+  <div class="card"><h2>Մեր ծառայությունները</h2><div id="all"></div></div>
 </div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -82,50 +83,59 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const fmtDate = d => d.split('-').reverse().join('.');
 
 
-let services = [], slots = [];
+let masters = [], slots = [];
 const pre = new URLSearchParams(location.search).get("m");
+const money = n => Number(n).toLocaleString() + " ֏";
+const todayStr = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 async function init() {
   try {
     const us = await getDocs(collection(db, "users"));
-    if (us.empty) return $("msg").textContent = "Աշխատակիցներ դեռ չկան։";
-    $("master").innerHTML = us.docs.map(d => `<option value="${d.id}">${esc(d.data().username || "Աշխատակից")}</option>`).join("");
-    if (pre && us.docs.some(d => d.id === pre)) $("master").value = pre;
+    masters = await Promise.all(us.docs.map(async d => {
+      const s = await getDocs(collection(db, "users", d.id, "services"));
+      return { id: d.id, name: d.data().displayName || d.data().username || "Աշխատակից",
+               services: s.docs.map(x => ({ id: x.id, ...x.data() })) };
+    }));
+    masters = masters.filter(m => m.services.length);
+    if (!masters.length) return $("msg").textContent = "Ծառայություններ դեռ չկան։";
+    $("master").innerHTML = masters.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join("");
+    if (pre && masters.some(m => m.id === pre)) $("master").value = pre;
+    $("all").innerHTML = masters.map(m => `<div style="margin-bottom:16px"><b>${esc(m.name)}</b>` +
+      m.services.map(s => `<div class="item"><div>${esc(s.name)}<small>${money(s.price)}</small></div>
+        <button class="ghost" type="button" onclick="pick('${m.id}','${s.id}')">Ընտրել</button></div>`).join("") + `</div>`).join("");
     await loadMaster();
   } catch (e) { $("msg").textContent = "Չհաջողվեց բեռնել տվյալները։"; }
 }
-async function loadMaster() {
-  const m = $("master").value;
-  const [s, t] = await Promise.all([
-    getDocs(collection(db, "users", m, "services")),
-    getDocs(query(collection(db, "users", m, "slots"), where("booked", "==", false)))
-  ]);
-  const today = new Date().toISOString().slice(0, 10);
-  services = s.docs.map(d => ({ id: d.id, ...d.data() }));
+window.pick = async (mid, sid) => { $("master").value = mid; await loadMaster(sid); scrollTo({ top: 0, behavior: "smooth" }); };
+
+async function loadMaster(sid) {
+  const m = masters.find(x => x.id === $("master").value);
+  const t = await getDocs(query(collection(db, "users", m.id, "slots"), where("booked", "==", false)));
+  const today = todayStr();
   slots = t.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.date >= today)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  $("serv").innerHTML = services.map(x => `<option value="${x.id}">${esc(x.name)} — ${Number(x.price).toLocaleString()} ֏ (${esc(x.first)} ${esc(x.last)})</option>`).join("");
+  $("serv").innerHTML = m.services.map(x => `<option value="${x.id}">${esc(x.name)} — ${money(x.price)}</option>`).join("");
+  if (sid) $("serv").value = sid;
   $("slot").innerHTML = slots.map(x => `<option value="${x.id}">${fmtDate(x.date)} ${x.time}</option>`).join("");
-  const ok = services.length && slots.length;
   $("bForm").classList.remove("hide");
-  $("msg").classList.toggle("hide", !!ok);
-  $("msg").textContent = ok ? "" : "Այս աշխատակցի մոտ այս պահին ազատ ժամեր կամ ծառայություններ չկան։";
-  $("btn").disabled = !ok;
+  $("msg").classList.toggle("hide", slots.length > 0);
+  $("msg").textContent = slots.length ? "" : "Այս աշխատակցի մոտ այս պահին ազատ ժամեր չկան։ Ընտրեք մեկ այլ աշխատակցի։";
+  $("btn").disabled = !slots.length;
 }
-$("master").onchange = loadMaster;
+$("master").onchange = () => loadMaster();
 
 $("bForm").onsubmit = async e => {
   e.preventDefault();
-  const m = $("master").value;
-  const sv = services.find(x => x.id === $("serv").value), sl = slots.find(x => x.id === $("slot").value);
+  const m = masters.find(x => x.id === $("master").value);
+  const sv = m.services.find(x => x.id === $("serv").value), sl = slots.find(x => x.id === $("slot").value);
   $("btn").disabled = true; $("err").textContent = "";
   try {
     const b = writeBatch(db);
-    b.set(doc(collection(db, "users", m, "clients")), {
+    b.set(doc(collection(db, "users", m.id, "clients")), {
       name: $("name").value.trim(), phone: $("phone").value.trim(),
       serviceId: sv.id, serviceName: sv.name, price: sv.price,
       slotId: sl.id, date: sl.date, time: sl.time, createdAt: serverTimestamp() });
-    b.update(doc(db, "users", m, "slots", sl.id), { booked: true });
+    b.update(doc(db, "users", m.id, "slots", sl.id), { booked: true });
     await b.commit(); // եթե ժամը մինչ այդ զբաղեցվել է, գործողությունը կմերժվի
     $("bForm").classList.add("hide"); $("done").classList.remove("hide");
   } catch (er) {
