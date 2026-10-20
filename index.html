@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Օնլայն գրանցում — Zara Nail</title>
+<style>
+:root{--bg:#fdf2f6;--card:#fff;--tx:#3a2430;--mut:#8a6f7c;--ac:#d6457f;--ac2:#f7c5d8;--bd:#f0d5df}
+@media(prefers-color-scheme:dark){:root{--bg:#1d1318;--card:#2a1c23;--tx:#f6e6ee;--mut:#b99aa8;--ac:#ee6a9f;--ac2:#4a2536;--bd:#4a2f3b}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Noto Sans Armenian",sans-serif;background:var(--bg);color:var(--tx);min-height:100vh}
+.wrap{max-width:860px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:22px;box-shadow:0 6px 24px rgba(214,69,127,.08);margin-bottom:16px}
+h1{margin:0 0 4px;color:var(--ac)} h2{margin-top:0} .sub{color:var(--mut);margin:0 0 18px}
+input,select{width:100%;padding:11px 12px;margin:5px 0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font-size:15px}
+label{font-size:13px;color:var(--mut)}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:11px 18px;font-size:15px;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+button.ghost{background:var(--ac2);color:var(--tx)} button.del{background:transparent;color:var(--ac);padding:4px 8px}
+.full{width:100%}
+#auth{max-width:400px;margin:8vh auto 0;text-align:center}
+.tabs{display:flex;gap:6px;margin-bottom:18px}
+.tabs button{flex:1;background:var(--ac2);color:var(--tx)} .tabs button.on{background:var(--ac);color:#fff}
+form{text-align:left}
+.err{color:#d93025;font-size:14px;min-height:20px;margin-bottom:8px}
+.ok{color:#188038;font-size:15px;margin-top:10px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--bd)}
+.item:last-child{border:0} .item small{color:var(--mut);display:block}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{background:var(--ac2);border-radius:20px;padding:6px 12px;font-size:14px}
+.chip.busy{opacity:.5;text-decoration:line-through}
+.empty{color:var(--mut);text-align:center;padding:16px}
+.hide{display:none}
+.link{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.link input{flex:1;margin:0;min-width:200px}
+</style>
+</head>
+<body>
+<div class="wrap" style="max-width:520px">
+  <div class="card">
+    <h1>💅 Zara Nail</h1>
+    <p class="sub">Գրանցվեք մեզ մոտ առցանց</p>
+    <div id="msg" class="empty">Բեռնվում է…</div>
+    <form id="bForm" class="hide">
+      <label>Աշխատակից</label><select id="master"></select>
+      <label>Ծառայություն</label><select id="serv" required></select>
+      <label>Ազատ ժամ</label><select id="slot" required></select>
+      <label>Ձեր անունը</label><input id="name" required maxlength="80">
+      <label>Հեռախոս</label><input id="phone" type="tel" required maxlength="30">
+      <div class="err" id="err"></div>
+      <button class="full" id="btn">Գրանցվել</button>
+    </form>
+    <div id="done" class="ok hide">✅ Դուք հաջողությամբ գրանցվեցիք։ Սպասում ենք ձեզ։</div>
+    <a href="nerqin.html" style="display:block;text-align:center;margin-top:16px;font-size:13px;color:var(--ac)">Աշխատակիցների մուտք</a>
+  </div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDocs, collection, query, where, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAb21A8xIv1n99biiKX_dLj43QBR6rddHg",
+  authDomain: "zara-nail.firebaseapp.com",
+  projectId: "zara-nail",
+  storageBucket: "zara-nail.firebasestorage.app",
+  messagingSenderId: "344377626013",
+  appId: "1:344377626013:web:63039a78264e54f89ab374",
+  measurementId: "G-B381Y523GP"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+isSupported().then(ok => { if (ok) getAnalytics(app); }).catch(() => {});
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDate = d => d.split('-').reverse().join('.');
+
+
+let services = [], slots = [];
+const pre = new URLSearchParams(location.search).get("m");
+
+async function init() {
+  try {
+    const us = await getDocs(collection(db, "users"));
+    if (us.empty) return $("msg").textContent = "Աշխատակիցներ դեռ չկան։";
+    $("master").innerHTML = us.docs.map(d => `<option value="${d.id}">${esc(d.data().username || "Աշխատակից")}</option>`).join("");
+    if (pre && us.docs.some(d => d.id === pre)) $("master").value = pre;
+    await loadMaster();
+  } catch (e) { $("msg").textContent = "Չհաջողվեց բեռնել տվյալները։"; }
+}
+async function loadMaster() {
+  const m = $("master").value;
+  const [s, t] = await Promise.all([
+    getDocs(collection(db, "users", m, "services")),
+    getDocs(query(collection(db, "users", m, "slots"), where("booked", "==", false)))
+  ]);
+  const today = new Date().toISOString().slice(0, 10);
+  services = s.docs.map(d => ({ id: d.id, ...d.data() }));
+  slots = t.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.date >= today)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  $("serv").innerHTML = services.map(x => `<option value="${x.id}">${esc(x.name)} — ${Number(x.price).toLocaleString()} ֏ (${esc(x.first)} ${esc(x.last)})</option>`).join("");
+  $("slot").innerHTML = slots.map(x => `<option value="${x.id}">${fmtDate(x.date)} ${x.time}</option>`).join("");
+  const ok = services.length && slots.length;
+  $("bForm").classList.remove("hide");
+  $("msg").classList.toggle("hide", !!ok);
+  $("msg").textContent = ok ? "" : "Այս աշխատակցի մոտ այս պահին ազատ ժամեր կամ ծառայություններ չկան։";
+  $("btn").disabled = !ok;
+}
+$("master").onchange = loadMaster;
+
+$("bForm").onsubmit = async e => {
+  e.preventDefault();
+  const m = $("master").value;
+  const sv = services.find(x => x.id === $("serv").value), sl = slots.find(x => x.id === $("slot").value);
+  $("btn").disabled = true; $("err").textContent = "";
+  try {
+    const b = writeBatch(db);
+    b.set(doc(collection(db, "users", m, "clients")), {
+      name: $("name").value.trim(), phone: $("phone").value.trim(),
+      serviceId: sv.id, serviceName: sv.name, price: sv.price,
+      slotId: sl.id, date: sl.date, time: sl.time, createdAt: serverTimestamp() });
+    b.update(doc(db, "users", m, "slots", sl.id), { booked: true });
+    await b.commit(); // եթե ժամը մինչ այդ զբաղեցվել է, գործողությունը կմերժվի
+    $("bForm").classList.add("hide"); $("done").classList.remove("hide");
+  } catch (er) {
+    $("err").textContent = "Այս ժամն արդեն զբաղված է կամ տեղի ունեցավ սխալ։ Ընտրեք այլ ժամ։";
+    loadMaster().catch(() => {});
+  } finally { $("btn").disabled = false; }
+};
+init();
+</script>
+</body>
+</html>
