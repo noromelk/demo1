@@ -82,6 +82,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
     <button class="on" data-t="services">Ծառայություններ</button>
     <button data-t="hours">Ազատ ժամեր</button>
     <button data-t="clients">Հաճախորդներ</button>
+    <button data-t="confirmed">Հաստատված</button>
   </div>
 
   <div id="services" class="card">
@@ -126,7 +127,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
   </div>
 
   <div id="clients" class="card hide">
-    <h2>Գրանցված հաճախորդներ</h2>
+    <h2>Նոր գրանցումներ</h2>
     <div id="todayInfo" class="sub"></div>
     <div id="cList"></div>
     <h2 style="margin-top:26px">Գրանցել հաճախորդ ձեռքով</h2>
@@ -139,6 +140,12 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
       </div>
       <button>Գրանցել</button>
     </form>
+  </div>
+
+  <div id="confirmed" class="card hide">
+    <h2>Հաստատված հաճախորդներ</h2>
+    <div id="confInfo" class="sub"></div>
+    <div id="confList"></div>
   </div>
 </section>
 </div>
@@ -270,7 +277,7 @@ $("copy").onclick = async () => {
 // ---------- Ներդիրներ ----------
 document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-t]").forEach(x => x.classList.toggle("on", x === b));
-  ["services", "hours", "clients"].forEach(t => $(t).classList.toggle("hide", t !== b.dataset.t));
+  ["services", "hours", "clients", "confirmed"].forEach(t => $(t).classList.toggle("hide", t !== b.dataset.t));
 });
 
 // ---------- Ավելացում ----------
@@ -324,8 +331,14 @@ window.delSlot = async id => {
   if (clients.some(c => c.slotId === id)) return alert("Այս ժամը զբաղված է հաճախորդով");
   await deleteDoc(doc(db, "users", uid, "slots", id));
 };
+window.confirmClient = async id => {
+  const b = writeBatch(db);
+  b.update(doc(db, "users", uid, "clients", id), { status: "confirmed", confirmedAt: serverTimestamp() });
+  await b.commit();
+};
 window.delClient = async id => {
   const c = clients.find(x => x.id === id); if (!c) return;
+  if (c.status === "confirmed") return alert("Հաստատված գրանցումը չի կարելի չեղարկել");
   const b = writeBatch(db);
   b.delete(doc(db, "users", uid, "clients", id));
   if (slots.some(s => s.id === c.slotId)) b.update(doc(db, "users", uid, "slots", c.slotId), { booked: false });
@@ -352,11 +365,16 @@ function render() {
     `</div></div>`).join("") : '<div class="empty">Ազատ ժամեր դեռ չկան</div>';
 
   $("todayInfo").textContent = "Այսօրվա գրանցումներ՝ " + clients.filter(c => c.date === today).length;
-  $("cList").innerHTML = clients.length ? clients.map(c =>
-    `<div class="item"><div><b>${esc(c.name)}</b> · ${esc(c.phone)}
-     <small>${esc(c.serviceName)} — ${money(c.price)} · ${fmtDate(c.date)} ${c.time}</small></div>
-     <button class="del" onclick="delClient('${c.id}')">Չեղարկել</button></div>`).join("")
-    : '<div class="empty">Գրանցված հաճախորդներ դեռ չկան</div>';
+  const pending = clients.filter(c => c.status !== "confirmed"), conf = clients.filter(c => c.status === "confirmed");
+  const row = (c, acts) => `<div class="item"><div><b>${esc(c.name)}</b> · ${esc(c.phone)}
+    <small>${esc(c.serviceName)} — ${money(c.price)} · ${fmtDate(c.date)} ${c.time}</small></div><div>${acts}</div></div>`;
+  $("cList").innerHTML = pending.length ? pending.map(c => row(c,
+    `<button class="ghost" onclick="confirmClient('${c.id}')">✓ Հաստատել</button> <button class="del" onclick="delClient('${c.id}')">Չեղարկել</button>`)).join("")
+    : '<div class="empty">Նոր գրանցումներ չկան</div>';
+  $("confList").innerHTML = conf.length ? conf.map(c => row(c, '<span style="color:#188038">✓ Հաստատված</span>')).join("")
+    : '<div class="empty">Հաստատված գրանցումներ դեռ չկան</div>';
+  $("confInfo").textContent = "Ընդամենը հաստատված՝ " + conf.length;
+  document.querySelector('[data-t="clients"]').textContent = "Հաճախորդներ" + (pending.length ? " (" + pending.length + ")" : "");
 
   const keepS = $("cServ").value, keepT = $("cSlot").value;
   $("cServ").innerHTML = services.map(s => `<option value="${s.id}">${esc(s.name)} (${money(s.price)})</option>`).join("")
