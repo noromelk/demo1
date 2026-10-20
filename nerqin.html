@@ -144,7 +144,6 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 </div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, addDoc, deleteDoc, writeBatch, collection, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
 
@@ -160,7 +159,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 isSupported().then(ok => { if (ok) getAnalytics(app); }).catch(() => {});
 
@@ -169,15 +167,18 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const fmtDate = d => d.split('-').reverse().join('.');
 
 
-let mode = "login", registering = false, uid = null, unsubs = [];
+let mode = "login", uid = null, unsubs = [];
 let services = [], slots = [], clients = [];
 
 // Օգտանունից կառուցում ենք եզակի էլ. հասցե ու փաստաթղթի id (աջակցում է հայերեն օգտանուններ)
+async function sha(s) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
 async function hashName(name) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("zara-nail::" + name.trim().toLowerCase()));
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40);
 }
-const emailOf = h => `${h}@zara-nail.app`;
 
 // ---------- Մուտք / Գրանցում ----------
 function setMode(m) {
@@ -193,47 +194,51 @@ function setMode(m) {
 $("tLogin").onclick = () => setMode("login");
 $("tReg").onclick = () => setMode("reg");
 
+const SES = "zara_uid";
 $("authForm").onsubmit = async e => {
   e.preventDefault();
   const name = $("u").value.trim(), pass = $("p").value, btn = $("authBtn");
   const dn = $("dn").value.trim() || name;
   $("err").textContent = ""; btn.disabled = true;
   try {
-    const h = await hashName(name);
-    const exists = (await getDoc(doc(db, "usernames", h))).exists(); // ստուգում ենք՝ նման օգտատեր կա՞
+    const hu = await hashName(name);
+    const hp = await sha("zara-nail-pw::" + name.toLowerCase() + "::" + pass);
+    const un = await getDoc(doc(db, "usernames", hu)); // ստուգում ենք՝ նման օգտատեր կա՞
     if (mode === "reg") {
       if (pass !== $("p2").value) throw { msg: "Գաղտնաբառերը չեն համընկնում" };
-      if (exists) throw { msg: "Այս օգտանունն արդեն զբաղված է" };
-      registering = true;
-      const cred = await createUserWithEmailAndPassword(auth, emailOf(h), pass);
+      if (pass.length < 6) throw { msg: "Գաղտնաբառը պետք է լինի առնվազն 6 նիշ" };
+      if (un.exists()) throw { msg: "Այս օգտանունն արդեն զբաղված է" };
+      const id = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "");
       const b = writeBatch(db);
-      b.set(doc(db, "usernames", h), { uid: cred.user.uid });
-      b.set(doc(db, "users", cred.user.uid), { username: name, displayName: dn, createdAt: serverTimestamp() });
+      b.set(doc(db, "usernames", hu), { uid: id });
+      b.set(doc(db, "logins", hp), { uid: id });
+      b.set(doc(db, "users", id), { username: name, displayName: dn, createdAt: serverTimestamp() });
       await b.commit();
-      registering = false;
-      enter(cred.user.uid, dn);
+      localStorage.setItem(SES, id); enter(id, dn);
     } else {
-      if (!exists) throw { msg: "Նման օգտատեր համակարգում չկա։ Խնդրում ենք գրանցվել" };
-      await signInWithEmailAndPassword(auth, emailOf(h), pass);
+      if (!un.exists()) throw { msg: "Նման օգտատեր համակարգում չկա։ Խնդրում ենք գրանցվել" };
+      const lg = await getDoc(doc(db, "logins", hp));
+      if (!lg.exists() || lg.data().uid !== un.data().uid) throw { msg: "Գաղտնաբառը սխալ է" };
+      const id = lg.data().uid, us = await getDoc(doc(db, "users", id));
+      localStorage.setItem(SES, id);
+      enter(id, us.exists() ? (us.data().displayName || us.data().username) : name);
     }
     $("authForm").reset();
   } catch (er) {
-    registering = false;
-    const c = er.code || "";
-    $("err").textContent = er.msg ||
-      (c.includes("invalid-credential") || c.includes("wrong-password") ? "Գաղտնաբառը սխալ է" :
-       c.includes("weak-password") ? "Գաղտնաբառը պետք է լինի առնվազն 6 նիշ" :
-       c.includes("operation-not-allowed") ? "Firebase-ում միացրեք Email/Password մուտքը" :
-       c.includes("too-many") ? "Շատ փորձեր, փորձեք ավելի ուշ" : "Սխալ՝ " + (er.message || c));
+    $("err").textContent = er.msg || "Սխալ՝ " + (er.message || er.code || "");
   } finally { btn.disabled = false; }
 };
 
-onAuthStateChanged(auth, async user => {
-  if (registering) return;
-  if (!user) return leave();
-  const s = await getDoc(doc(db, "users", user.uid));
-  enter(user.uid, s.exists() ? (s.data().displayName || s.data().username) : "");
-});
+// Սեսիայի վերականգնում
+(async () => {
+  const id = localStorage.getItem(SES);
+  if (!id) return leave();
+  try {
+    const s = await getDoc(doc(db, "users", id));
+    if (s.exists()) return enter(id, s.data().displayName || s.data().username);
+  } catch (e) {}
+  localStorage.removeItem(SES); leave();
+})();
 
 function enter(id, name) {
   uid = id;
@@ -255,7 +260,7 @@ function leave() {
   services = slots = clients = [];
   $("app").classList.add("hide"); $("auth").classList.remove("hide"); setMode("login");
 }
-$("logout").onclick = () => signOut(auth);
+$("logout").onclick = () => { localStorage.removeItem(SES); leave(); };
 $("copy").onclick = async () => {
   try { await navigator.clipboard.writeText($("bLink").value); $("copy").textContent = "Պատճենվեց ✓"; }
   catch { $("bLink").select(); }
