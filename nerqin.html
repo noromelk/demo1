@@ -53,6 +53,10 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
     <input id="u" required minlength="3" maxlength="30" autocomplete="username">
     <label>Գաղտնաբառ</label>
     <input id="p" type="password" required minlength="6" autocomplete="current-password">
+    <div id="regbox" class="hide">
+      <label>Ձեր անուն ազգանունը (կերևա հաճախորդներին)</label>
+      <input id="dn" maxlength="60" autocomplete="name">
+    </div>
     <div id="pw2box" class="hide">
       <label>Կրկնել գաղտնաբառը</label>
       <input id="p2" type="password" autocomplete="new-password">
@@ -104,12 +108,26 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
       </div>
       <button>Ավելացնել ժամ</button>
     </form>
+    <h2 style="margin-top:26px">Արագ ավելացում օրվա համար</h2>
+    <p class="sub" style="margin:0 0 10px">Նշեք աշխատանքային ժամերը, և ժամերը կստեղծվեն ինքնաբերաբար։</p>
+    <form id="bulkForm">
+      <div class="row">
+        <div><label>Ամսաթիվ</label><input id="bDate" type="date" required></div>
+        <div><label>Քայլ</label><select id="bStep">
+          <option value="30">30 րոպե</option><option value="60" selected>1 ժամ</option>
+          <option value="90">1.5 ժամ</option><option value="120">2 ժամ</option></select></div>
+        <div><label>Սկսած</label><input id="bFrom" type="time" value="10:00" required></div>
+        <div><label>Մինչև</label><input id="bTo" type="time" value="18:00" required></div>
+      </div>
+      <button class="ghost">Ստեղծել ժամերը</button>
+    </form>
     <h2 style="margin-top:26px">Իմ ազատ ժամերը</h2>
     <div id="hList"></div>
   </div>
 
   <div id="clients" class="card hide">
     <h2>Գրանցված հաճախորդներ</h2>
+    <div id="todayInfo" class="sub"></div>
     <div id="cList"></div>
     <h2 style="margin-top:26px">Գրանցել հաճախորդ ձեռքով</h2>
     <form id="cForm">
@@ -167,6 +185,7 @@ function setMode(m) {
   $("tLogin").classList.toggle("on", m === "login");
   $("tReg").classList.toggle("on", m === "reg");
   $("pw2box").classList.toggle("hide", m === "login");
+  $("regbox").classList.toggle("hide", m === "login"); $("dn").required = m === "reg";
   $("p2").required = m === "reg";
   $("authBtn").textContent = m === "login" ? "Մուտք գործել" : "Գրանցվել";
   $("err").textContent = "";
@@ -177,6 +196,7 @@ $("tReg").onclick = () => setMode("reg");
 $("authForm").onsubmit = async e => {
   e.preventDefault();
   const name = $("u").value.trim(), pass = $("p").value, btn = $("authBtn");
+  const dn = $("dn").value.trim() || name;
   $("err").textContent = ""; btn.disabled = true;
   try {
     const h = await hashName(name);
@@ -188,10 +208,10 @@ $("authForm").onsubmit = async e => {
       const cred = await createUserWithEmailAndPassword(auth, emailOf(h), pass);
       const b = writeBatch(db);
       b.set(doc(db, "usernames", h), { uid: cred.user.uid });
-      b.set(doc(db, "users", cred.user.uid), { username: name, createdAt: serverTimestamp() });
+      b.set(doc(db, "users", cred.user.uid), { username: name, displayName: dn, createdAt: serverTimestamp() });
       await b.commit();
       registering = false;
-      enter(cred.user.uid, name);
+      enter(cred.user.uid, dn);
     } else {
       if (!exists) throw { msg: "Նման օգտատեր համակարգում չկա։ Խնդրում ենք գրանցվել" };
       await signInWithEmailAndPassword(auth, emailOf(h), pass);
@@ -212,7 +232,7 @@ onAuthStateChanged(auth, async user => {
   if (registering) return;
   if (!user) return leave();
   const s = await getDoc(doc(db, "users", user.uid));
-  enter(user.uid, s.exists() ? s.data().username : "");
+  enter(user.uid, s.exists() ? (s.data().displayName || s.data().username) : "");
 });
 
 function enter(id, name) {
@@ -263,6 +283,20 @@ $("hForm").onsubmit = async e => {
   await addDoc(collection(db, "users", uid, "slots"), { date, time, booked: false });
   $("hTime").value = "";
 };
+$("bulkForm").onsubmit = async e => {
+  e.preventDefault();
+  const date = $("bDate").value, step = +$("bStep").value;
+  const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3), fmt = m => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  const from = toMin($("bFrom").value), to = toMin($("bTo").value);
+  const b = writeBatch(db); let n = 0;
+  for (let t = from; t + step <= to; t += step) {
+    const time = fmt(t);
+    if (slots.some(x => x.date === date && x.time === time)) continue;
+    b.set(doc(collection(db, "users", uid, "slots")), { date, time, booked: false }); n++;
+  }
+  if (!n) return alert("Նոր ժամեր չեն ավելացվել (ստուգեք ժամերը կամ դրանք արդեն կան)");
+  await b.commit(); alert("Ավելացվեց " + n + " ժամ");
+};
 $("cForm").onsubmit = async e => {
   e.preventDefault();
   const sv = services.find(x => x.id === $("cServ").value), sl = slots.find(x => x.id === $("cSlot").value);
@@ -294,7 +328,9 @@ window.delClient = async id => {
 };
 
 // ---------- Ցուցադրում ----------
+const todayStr = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 function render() {
+  const today = todayStr();
   const money = n => Number(n).toLocaleString() + " ֏";
   $("sList").innerHTML = services.length ? services.map(s =>
     `<div class="item"><div><b>${esc(s.name)}</b> — ${money(s.price)}<small>${esc(s.first)} ${esc(s.last)}</small></div>
@@ -302,13 +338,15 @@ function render() {
     : '<div class="empty">Ծառայություններ դեռ չկան</div>';
 
   const byDate = {};
-  slots.forEach(s => (byDate[s.date] ||= []).push(s));
-  $("hList").innerHTML = slots.length ? Object.keys(byDate).map(d =>
+  const upcoming = slots.filter(s => s.date >= today);
+  upcoming.forEach(s => (byDate[s.date] ||= []).push(s));
+  $("hList").innerHTML = upcoming.length ? Object.keys(byDate).map(d =>
     `<div style="margin-bottom:14px"><b>${fmtDate(d)}</b><div class="chips">` +
     byDate[d].map(s => `<span class="chip ${s.booked ? "busy" : ""}">${s.time}
       <button class="del" style="padding:0 0 0 6px" onclick="delSlot('${s.id}')">✕</button></span>`).join("") +
     `</div></div>`).join("") : '<div class="empty">Ազատ ժամեր դեռ չկան</div>';
 
+  $("todayInfo").textContent = "Այսօրվա գրանցումներ՝ " + clients.filter(c => c.date === today).length;
   $("cList").innerHTML = clients.length ? clients.map(c =>
     `<div class="item"><div><b>${esc(c.name)}</b> · ${esc(c.phone)}
      <small>${esc(c.serviceName)} — ${money(c.price)} · ${fmtDate(c.date)} ${c.time}</small></div>
@@ -318,7 +356,7 @@ function render() {
   const keepS = $("cServ").value, keepT = $("cSlot").value;
   $("cServ").innerHTML = services.map(s => `<option value="${s.id}">${esc(s.name)} (${money(s.price)})</option>`).join("")
     || '<option value="">Նախ ավելացրեք ծառայություն</option>';
-  $("cSlot").innerHTML = slots.filter(s => !s.booked).map(s => `<option value="${s.id}">${fmtDate(s.date)} ${s.time}</option>`).join("")
+  $("cSlot").innerHTML = slots.filter(s => !s.booked && s.date >= today).map(s => `<option value="${s.id}">${fmtDate(s.date)} ${s.time}</option>`).join("")
     || '<option value="">Ազատ ժամ չկա</option>';
   if (keepS) $("cServ").value = keepS; if (keepT) $("cSlot").value = keepT;
 }
