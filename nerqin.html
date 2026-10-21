@@ -2,22 +2,22 @@
 <html lang="hy">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Աշխատակիցների էջ — Zara Nail</title>
 <style>
 :root{--bg:#000;--card:#101010;--card2:#171717;--tx:#f3ece8;--mut:#9b918c;--ac:#e8c4b8;--ac-d:#c99a8a;--bd:#2a2523;--on-ac:#1a0f0c;--danger:#ff8a80;--good:#9bd7a8}
 *{box-sizing:border-box}
 html{color-scheme:dark}
-body{margin:0;font-family:system-ui,"Noto Sans Armenian",sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;line-height:1.5}
-.wrap{max-width:860px;margin:0 auto;padding:24px 18px 48px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:24px 22px;margin-bottom:20px}
-h1{margin:0 0 4px;font-family:Georgia,"Noto Serif Armenian",serif;font-weight:400;font-size:30px;letter-spacing:.03em;color:var(--ac)}
+body{margin:0;padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);-webkit-text-size-adjust:100%;overflow-wrap:anywhere;font-family:system-ui,"Noto Sans Armenian",sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;line-height:1.5}
+.wrap{max-width:960px;margin:0 auto;padding:clamp(14px,4vw,28px) clamp(12px,4vw,24px) 48px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:clamp(16px,4vw,26px);margin-bottom:20px}
+h1{margin:0 0 4px;font-family:Georgia,"Noto Serif Armenian",serif;font-weight:400;font-size:clamp(24px,6vw,32px);letter-spacing:.03em;color:var(--ac)}
 h2{margin:0 0 16px;font-family:Georgia,"Noto Serif Armenian",serif;font-weight:400;font-size:22px}
 .sub{color:var(--mut);margin:0 0 18px}
 input,select{width:100%;padding:12px 14px;margin:6px 0 14px;border:1px solid var(--bd);border-radius:10px;background:var(--card2);color:var(--tx);font:inherit;font-size:16px}
 input:focus,select:focus{border-color:var(--ac-d)}
 label{display:block;font-size:14px;color:var(--mut)}
-button{font:inherit;font-size:15px;cursor:pointer;border-radius:999px;padding:11px 22px;border:1px solid transparent;background:var(--ac);color:var(--on-ac);font-weight:600;transition:background .2s,color .2s}
+button{font:inherit;font-size:15px;min-height:44px;cursor:pointer;border-radius:999px;padding:11px 22px;border:1px solid transparent;background:var(--ac);color:var(--on-ac);font-weight:600;transition:background .2s,color .2s}
 button:hover{background:#f2d3c8}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 button:disabled{opacity:.5;cursor:wait}
@@ -26,16 +26,15 @@ button.ghost:hover{background:var(--ac);color:var(--on-ac)}
 button.del{background:transparent;color:var(--danger);padding:6px 12px;font-weight:400}
 button.del:hover{background:rgba(255,138,128,.12)}
 .full{width:100%}
-#auth{max-width:400px;margin:8vh auto 0;text-align:center}
-.tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
-.tabs button{flex:1;min-width:120px;background:transparent;color:var(--mut);border:1px solid var(--bd);font-weight:400}
+#auth{max-width:420px;margin:clamp(12px,6vh,64px) auto 0;text-align:center}
+.tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-bottom:20px}
+.tabs button{padding:10px 12px;background:transparent;color:var(--mut);border:1px solid var(--bd);font-weight:400}
 .tabs button:hover{color:var(--tx);background:var(--card2)}
 .tabs button.on{background:var(--ac);color:var(--on-ac);border-color:var(--ac);font-weight:600}
 form{text-align:left}
 .err{color:var(--danger);font-size:14px;min-height:20px;margin-bottom:8px}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:10px;padding-top:8px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
-@media(max-width:560px){.row{grid-template-columns:1fr}}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:0 14px}
 .item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 0;border-bottom:1px solid var(--bd)}
 .item:last-child{border:0} .item small{color:var(--mut);display:block}
 .acts{display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
@@ -46,9 +45,16 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .empty{color:var(--mut);text-align:center;padding:16px}
 .hide{display:none}
 .link{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.link input{flex:1;margin:0;min-width:200px}
+.link input{flex:1;margin:0;min-width:min(100%,200px)}
 .divider{border:0;border-top:1px solid var(--bd);margin:28px 0}
 .okc{color:var(--good)}
+@media(max-width:520px){
+  .item{flex-direction:column;align-items:stretch}
+  .acts{justify-content:flex-start}
+  header{flex-wrap:wrap}
+  form>button{width:100%}
+  form>button+button{margin-top:8px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
